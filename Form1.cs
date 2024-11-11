@@ -2,7 +2,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Security;
+using System.IO.Compression;
 using System.Windows.Forms;
 
 namespace InfoAboutFile2._0
@@ -14,49 +14,101 @@ namespace InfoAboutFile2._0
         public Form1()
         {
             InitializeComponent();
+            InitializeDataGridView();
         }
 
-        private void ChooseImage_Click(object sender, EventArgs e)
+        private void InitializeDataGridView()
         {
-            openFileDialog1 = new OpenFileDialog();
-            if (openFileDialog1.ShowDialog() == DialogResult.OK)
-            {
-                try
-                {
-                    var filePath = openFileDialog1.FileName;
+            dataGridView1.Columns.Add("FileName", "File Name");
+            dataGridView1.Columns.Add("ImageSize", "Image Size");
+            dataGridView1.Columns.Add("Resolution", "Resolution");
+            dataGridView1.Columns.Add("ColorDepth", "Color Depth");
+            dataGridView1.Columns.Add("Compression", "Compression");
+        }
 
-                    using (Stream str = openFileDialog1.OpenFile())
+        private void ProcessImage(string filePath, string fileName)
+        {
+            try
+            {
+                using (Bitmap bitmap = new Bitmap(filePath))
+                {
+                    int width = bitmap.Width;
+                    int height = bitmap.Height;
+                    float dpiX = bitmap.HorizontalResolution;
+                    float dpiY = bitmap.VerticalResolution;
+                    float widthInInches = width / dpiX;
+                    float heightInInches = height / dpiY;
+                    PixelFormat format = bitmap.PixelFormat;
+                    int bitsPerPixel = Image.GetPixelFormatSize(format);
+                    dataGridView1.Rows.Add(fileName,
+                        $"{width}x{height}",
+                        $"inch: {widthInInches:F2}x{heightInInches:F2}, dot: {dpiX}x{dpiY}",
+                        $"{bitsPerPixel} bits/pixel",
+                        $"{new FileInfo(filePath).Length} bytes");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error processing image {fileName}: {ex.Message}");
+            }
+        }
+
+        private void ExtractImagesFromZip(string zipPath)
+        {
+            try
+            {
+                using (var zipArchive = ZipFile.OpenRead(zipPath))
+                {
+                    foreach (var entry in zipArchive.Entries)
                     {
-                        FileInfo fileInfo = new FileInfo(filePath);
-                        NameVal.Text = fileInfo.Name;
-                        using (Bitmap bitmap = new Bitmap(filePath))
+                        if (entry.FullName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                            entry.FullName.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+                            entry.FullName.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase))
                         {
-                            int width = bitmap.Width;
-                            int height = bitmap.Height;
-                            float dpiX = bitmap.HorizontalResolution;
-                            float dpiY = bitmap.VerticalResolution;
-                            float widthInInches = width / dpiX;
-                            float heightInInches = height / dpiY;
-                            PixelFormat format = bitmap.PixelFormat;
-                            int bitsPerPixel = Image.GetPixelFormatSize(format);
-                            SizeVal.Text = width.ToString() + "x" + height.ToString();
-                            PerVal.Text = "inch: " + widthInInches.ToString() + "x" + heightInInches.ToString() + ", dot: " + dpiX.ToString() + "x" + dpiY.ToString();
-                            ColorVal.Text = bitsPerPixel.ToString() + " bits/pixel";
-                            ComVal.Text = fileInfo.Length.ToString();
+                            using (var stream = entry.Open())
+                            {
+                                string tempFilePath = Path.GetTempFileName();
+                                using (var fileStream = new FileStream(tempFilePath, FileMode.Create))
+                                {
+                                    stream.CopyTo(fileStream);
+                                }
+
+                                ProcessImage(tempFilePath, entry.FullName);
+                            }
                         }
                     }
                 }
-                catch (SecurityException ex)
-                {
-                    MessageBox.Show($"Security error.\n\nError message: {ex.Message}\n\n" +
-                    $"Details:\n\n{ex.StackTrace}");
-                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error while extracting images: {ex.Message}");
             }
         }
 
         private void pictureBox1_Click(object sender, EventArgs e)
         {
             Environment.Exit(0);
+        }
+
+        private void ChooseZip_Click_1(object sender, EventArgs e)
+        {
+
+            openFileDialog1 = new OpenFileDialog();
+            openFileDialog1.Filter = "ZIP Files (*.zip)|*.zip";
+            if (openFileDialog1.ShowDialog() == DialogResult.OK)
+            {
+                ExtractImagesFromZip(openFileDialog1.FileName);
+            }
+        }
+
+        private void ChooseImage_Click(object sender, EventArgs e)
+        {
+
+            openFileDialog1 = new OpenFileDialog();
+            if (openFileDialog1.ShowDialog() == DialogResult.OK)
+            {
+                ProcessImage(openFileDialog1.FileName, openFileDialog1.FileName);
+            }
         }
     }
 }
